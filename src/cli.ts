@@ -560,16 +560,21 @@ async function cmdInit(args: ParsedArgs): Promise<void> {
 
   out(c.bold('Connect an AI CLI agent to the bridge'));
   out('');
+  out(c.bold('opencode') + c.dim('  (recommended, V2 config)'));
+  out(`  opencode mcp add cli-bridge --global -- node "${mcpEntry}"`);
+  out(JSON.stringify({ $schema: 'https://opencode.ai/config.json', mcp: { servers: { 'cli-bridge': { type: 'local', command: ['node', mcpEntry] } } } }, null, 2));
   out(c.bold('Claude Code'));
   out(`  claude mcp add cli-bridge -- ${mcpCommand}`);
-  out(c.bold('Claude Desktop') + c.dim(' (claude_desktop_config.json)'));
+  out(c.bold('Claude Desktop') + c.dim('  (claude_desktop_config.json)'));
   out(JSON.stringify({ mcpServers: { 'cli-bridge': { command: 'node', args: [mcpEntry] } } }, null, 2));
-  out(c.bold('opencode') + c.dim(' (opencode.json)'));
-  out(JSON.stringify({ mcp: { 'cli-bridge': { type: 'local', command: ['node', mcpEntry], enabled: true } } }, null, 2));
-  out(c.bold('Cursor') + c.dim(' (.cursor/mcp.json)'));
+  out(c.bold('Cursor') + c.dim('  (.cursor/mcp.json)'));
   out(JSON.stringify({ mcpServers: { 'cli-bridge': { command: 'node', args: [mcpEntry] } } }, null, 2));
-  out(c.bold('Gemini CLI') + c.dim(' (~/.gemini/settings.json)'));
+  out(c.bold('Gemini CLI') + c.dim('  (~/.gemini/settings.json)'));
   out(JSON.stringify({ mcpServers: { 'cli-bridge': { command: 'node', args: [mcpEntry] } } }, null, 2));
+  out(c.bold('Codex CLI') + c.dim('  (~/.codex/config.toml)'));
+  out(`  [mcp_servers.cli-bridge]`);
+  out(`  command = "node"`);
+  out(`  args = ["${mcpEntry.replace(/\\/g, '\\\\')}"]`);
   out('');
   out(c.dim('Run "bridge serve" to expose the same tools over HTTP.'));
 }
