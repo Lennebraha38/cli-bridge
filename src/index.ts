@@ -26,3 +26,4 @@ export { scanPath, inferCapabilities } from './core/discovery/scan.js';
 export { CATALOG } from './core/catalog.js';
 export { installTool, planInstall, detectManagers, findInstallable } from './install/installer.js';
 export { bridgeHome } from './core/util.js';
+export * from './core/council/index.js';

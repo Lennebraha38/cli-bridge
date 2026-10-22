@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runChain, parseShorthand } from './core/chain.js';
@@ -13,6 +13,7 @@ import { detectManagers, findInstallable, installTool, planInstall } from './ins
 import { startServer } from './server/server.js';
 import { runMcpServer } from './mcp/mcp-server.js';
 import { bridgeHome, splitArgs, truncate } from './core/util.js';
+import { runCouncil, ROLE_PRESETS } from './core/council/index.js';
 
 /* ------------------------------------------------------------------ */
 /* tiny argument helpers                                               */
@@ -398,6 +399,146 @@ async function cmdChain(args: ParsedArgs): Promise<void> {
   if (!result.ok) process.exitCode = 1;
 }
 
+async function cmdCouncil(rawArgv: string[]): Promise<void> {
+  const parsed = parseArgs(rawArgv);
+  const agenda = parsed.positionals.join(' ');
+
+  if (!agenda) {
+    out(c.red('usage: bridge council "<agenda>" [--mode parallel|sequential|debate|brainstorm] [--rounds N] [--roles a,b,c] [--auto] [--json] [--save minutes.md]'));
+    out(c.dim('examples:'));
+    out(`  bridge council "Review this PR for security and performance issues" --roles security,performance,tester`);
+    out(`  bridge council "Brainstorm refactoring ideas for the CLI" --mode brainstorm --rounds 2`);
+    out(`  bridge council "Debug why CI is failing" --mode debate`);
+    out(c.dim('roles: ') + ROLE_PRESETS.map((r) => r.id).join(', '));
+    process.exitCode = 1;
+    return;
+  }
+
+  const mode = typeof parsed.flags.mode === 'string' ? (parsed.flags.mode as 'parallel' | 'sequential' | 'debate' | 'brainstorm') : 'parallel';
+  const rounds = typeof parsed.flags.rounds === 'string' ? parseInt(parsed.flags.rounds, 10) : undefined;
+  let roles: string[] | undefined;
+  if (typeof parsed.flags.roles === 'string') roles = parsed.flags.roles.split(',').map((r) => r.trim()).filter(Boolean);
+  if (parsed.flags.auto === true && !roles) roles = ['auto'];
+
+  const input = typeof parsed.flags.input === 'string' ? (() => {
+    try {
+      const raw = parsed.flags.input.startsWith('@') ? readFileSync(parsed.flags.input.slice(1), 'utf8') : parsed.flags.input;
+      return JSON.parse(raw);
+    } catch { return undefined; }
+  })() : undefined;
+
+  const files = typeof parsed.flags.files === 'string' ? parsed.flags.files.split(',').map((f) => f.trim()).filter(Boolean) : undefined;
+  const constraints = typeof parsed.flags.constraints === 'string' ? parsed.flags.constraints.split(';').map((c) => c.trim()).filter(Boolean) : undefined;
+
+  out(c.bold('╔═══════════════════════════════════════════════════════════╗'));
+  out(c.bold('║') + '           ' + c.cyan('CLI-BRIDGE COUNCIL') + ' - Conference Room           ' + c.bold('║'));
+  out(c.bold('╚═══════════════════════════════════════════════════════════╝'));
+  out('');
+  out(`${c.dim('Agenda:')} ${agenda}`);
+  out(`${c.dim('Mode:')}   ${mode} | ${c.dim('Rounds:')} ${rounds ?? 3}`);
+  if (roles) out(`${c.dim('Roles:')}  ${roles.join(', ')}`);
+  out('');
+  out(c.dim('Convening the meeting... All CLI tools are taking their seats.'));
+  out('');
+
+  try {
+    const result = await runCouncil({
+      agenda,
+      mode,
+      rounds,
+      roles,
+      input: input ? { agenda, context: input, files, constraints } : { agenda, files, constraints },
+    });
+
+    if (parsed.flags.json === true) {
+      printJson(result);
+    } else {
+      out(c.bold('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+      out(c.bold('                        MEETING IN SESSION                   '));
+      out(c.bold('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+      out('');
+
+      out(c.cyan('👥 PARTICIPANTS'));
+      for (const p of result.participants) {
+        out(`  ${p.chair ? '🎩' : '👤'} ${c.bold(p.name)} — ${p.role}${p.title ? ` (${p.title})` : ''}${p.chair ? ' [CHAIR]' : ''}`);
+      }
+      out('');
+
+      out(c.cyan('💬 DISCUSSION'));
+      for (const t of result.transcript) {
+        const marker = t.type === 'concern' ? '⚠️' : t.type === 'decision-proposal' ? '📋' : t.type === 'action-item' ? '✅' : t.type === 'suggestion' ? '💡' : '🗨️';
+        out(`  ${marker} ${c.bold(t.participantName)} ${c.dim(`[R${t.round}|${t.type}]`)}`);
+        for (const line of t.content.split('\n')) {
+          out(`     ${line}`);
+        }
+        out('');
+      }
+
+      out(c.cyan('🔍 FINDINGS'));
+      if (result.findings.length === 0) out(c.dim('  None'));
+      else {
+        for (const f of result.findings) {
+          const sev = f.severity === 'critical' ? c.red('[CRITICAL]') : f.severity === 'high' ? c.yellow('[HIGH]') : f.severity === 'medium' ? c.cyan('[MEDIUM]') : c.dim(`[${f.severity?.toUpperCase() ?? 'INFO'}]`);
+          out(`  ${sev} ${c.bold(f.title)}`);
+          out(`     ${c.dim(`by ${f.raisedByRole}`)} ${f.detail.slice(0, 120)}${f.detail.length > 120 ? '...' : ''}`);
+          out('');
+        }
+      }
+
+      out(c.cyan('📜 DECISIONS'));
+      if (result.decisions.length === 0) out(c.dim('  None'));
+      else {
+        for (const d of result.decisions) {
+          out(`  ✓ ${c.bold(d.title)}`);
+          out(`     ${c.dim('Agreed by:')} ${d.agreedBy.join(', ')}`);
+          out('');
+        }
+      }
+
+      out(c.cyan('🎯 ACTION ITEMS'));
+      if (result.actionItems.length === 0) out(c.dim('  None'));
+      else {
+        for (const a of result.actionItems) {
+          const prio = a.priority === 'urgent' ? c.red('[URGENT]') : a.priority === 'high' ? c.yellow('[HIGH]') : c.dim(`[${a.priority?.toUpperCase() ?? 'MED'}]`);
+          out(`  ${prio} ${a.assignee ? c.cyan('@' + a.assignee) : ''} ${c.bold(a.title)}`);
+          out('');
+        }
+      }
+
+      out(c.cyan('❓ OPEN QUESTIONS'));
+      if (result.questions.length === 0) out(c.dim('  None'));
+      else {
+        for (const q of result.questions) {
+          out(`  ? ${q.question} ${c.dim(`(${q.askedBy})`)}`);
+        }
+        out('');
+      }
+
+      out(c.bold('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+      out(c.bold('                      EXECUTIVE SUMMARY                      '));
+      out(c.bold('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+      out('');
+      out(result.summary);
+      out('');
+      out(c.dim(`Council ${result.councilId} | ${result.durationMs}ms | ${result.transcript.length} turns | ${result.findings.length} findings`));
+    }
+
+    if (typeof parsed.flags.save === 'string') {
+      writeFileSync(parsed.flags.save, result.minutes, 'utf8');
+      out(c.green(`\n✓ Minutes saved to ${parsed.flags.save}`));
+    } else if (parsed.flags.json !== true) {
+      const minutesPath = resolve(bridgeHome(), `${result.councilId}-minutes.md`);
+      writeFileSync(minutesPath, result.minutes, 'utf8');
+      out(c.dim(`\nMinutes also saved: ${minutesPath}`));
+    }
+
+    if (!result.ok) process.exitCode = 1;
+  } catch (error) {
+    out(c.red(`Council error: ${error instanceof Error ? error.message : String(error)}`));
+    process.exitCode = 1;
+  }
+}
+
 async function cmdOps(args: ParsedArgs): Promise<void> {
   const ops = listOperations();
 
@@ -635,6 +776,7 @@ ${c.bold('examples')}
   bridge call git log --oneline -10
   bridge op http.request --url https://api.github.com
   bridge chain "http.request url=https://api.github.com/repos/opencode/opencode | json.query filter=.stargazers_count"
+  bridge council "Review codebase security posture" --mode debate
   bridge install jq
 `;
 
@@ -674,6 +816,8 @@ async function main(): Promise<void> {
     case 'chain':
     case 'pipe':
       return cmdChain(args);
+    case 'council':
+      return cmdCouncil(argv.slice(1));
     case 'serve':
       return cmdServe(args);
     case 'mcp':
