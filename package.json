@@ -1,0 +1,58 @@
+{
+  "name": "cli-bridge",
+  "version": "0.1.0",
+  "description": "Local hub that connects every CLI tool on your machine to every other CLI tool - and to AI CLI agents over MCP.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "cli",
+    "bridge",
+    "mcp",
+    "model-context-protocol",
+    "automation",
+    "pipeline"
+  ],
+  "engines": {
+    "node": ">=20.10"
+  },
+  "bin": {
+    "bridge": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/server.d.ts",
+      "import": "./dist/server/server.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/mcp-server.d.ts",
+      "import": "./dist/mcp/mcp-server.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
+    "start": "node dist/cli.js",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
